@@ -9,6 +9,7 @@ module.exports = (usersCollection) => {
     const token = header.split(" ")[1];
     jwt.verify(token, process.env.JWT_SECRET, (error, decoded) => {
       if (error) {
+        // console.log("JWT error:", error.message); // temporary
         return res.status(401).send({ message: "unauthorized access" });
       }
       req.decoded = decoded;

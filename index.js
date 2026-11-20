@@ -37,13 +37,12 @@ async function run() {
     // BetterAuth stores users in the "user" collection
     const usersCollection = db.collection("user");
     const equipmentCollection = db.collection("equipment");
+    const favoritesCollection = db.collection("favorites");
 
-    const { verifyToken, verifyOwner, verifyAdmin } =
+    const { verifyToken, verifyRenter, verifyOwner, verifyAdmin } =
       require("./middleware/auth")(usersCollection);
 
     // ---------- users ----------
-
-    // get the logged-in user's role
     app.get("/users/role/:email", verifyToken, async (req, res) => {
       if (req.params.email !== req.decoded.email) {
         return res.status(403).send({ message: "forbidden access" });
@@ -52,7 +51,6 @@ async function run() {
       res.send({ role: user?.role || "customer" });
     });
 
-    // admin: all users
     app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
       const users = await usersCollection
         .find()
@@ -61,8 +59,6 @@ async function run() {
       res.send(users);
     });
 
-    // any logged-in user: update own profile
-    // (must stay above "/users/:id/role" style routes to avoid id clashes)
     app.patch("/users/profile", verifyToken, async (req, res) => {
       const { name, image, phone, address } = req.body;
       const result = await usersCollection.updateOne(
@@ -72,7 +68,6 @@ async function run() {
       res.send(result);
     });
 
-    // admin: change a user's role
     app.patch("/users/:id/role", verifyToken, verifyAdmin, async (req, res) => {
       const { role } = req.body;
       if (!["customer", "owner", "admin"].includes(role)) {
@@ -95,7 +90,14 @@ async function run() {
       { verifyToken, verifyOwner, verifyAdmin },
     );
 
-    // bookings, payments, favorites and analytics routes will be added here
+    // ---------- favorites ----------
+    require("./routes/favorites")(
+      app,
+      { favoritesCollection, equipmentCollection },
+      { verifyToken, verifyRenter },
+    );
+
+    // bookings, payments and analytics routes will be added here
 
     app.listen(port, () => {
       console.log(`Server running on port ${port}`);

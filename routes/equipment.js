@@ -161,6 +161,7 @@ module.exports = (app, collections, middleware) => {
   );
 
   // logged in: one equipment (details page)
+  // logged in: one equipment (details page)
   app.get("/equipment/:id", verifyToken, async (req, res) => {
     if (!ObjectId.isValid(req.params.id)) {
       return res.status(400).send({ message: "invalid id" });
@@ -171,6 +172,17 @@ module.exports = (app, collections, middleware) => {
     if (!item) {
       return res.status(404).send({ message: "equipment not found" });
     }
+
+    // only the owner or an admin can see items that are not approved
+    if (item.status !== "approved") {
+      const user = await usersCollection.findOne({ email: req.decoded.email });
+      const isAdmin = user && user.role === "admin";
+      const isOwner = item.ownerEmail === req.decoded.email;
+      if (!isAdmin && !isOwner) {
+        return res.status(404).send({ message: "equipment not found" });
+      }
+    }
+
     res.send(item);
   });
 
