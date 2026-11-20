@@ -2,7 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -24,23 +24,71 @@ const client = new MongoClient(process.env.MONGODB_URI, {
   },
 });
 
+app.get("/", (req, res) => {
+  res.send("Rentivo server is running");
+});
+
 async function run() {
   try {
     await client.connect();
     const db = client.db("RENTIVO");
     console.log("MongoDB connected");
 
-    // routes will be added here step by step
+    // BetterAuth stores users in the "user" collection
+    const usersCollection = db.collection("user");
+
+    const { verifyToken, verifyAdmin } =
+      require("./middleware/auth")(usersCollection);
+
+    // get the logged-in user's role
+    app.get("/users/role/:email", verifyToken, async (req, res) => {
+      if (req.params.email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      const user = await usersCollection.findOne({ email: req.params.email });
+      res.send({ role: user?.role || "customer" });
+    });
+
+    // admin: all users
+    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
+      const users = await usersCollection
+        .find()
+        .sort({ createdAt: -1 })
+        .toArray();
+      res.send(users);
+    });
+
+    // admin: change a user's role
+    app.patch("/users/:id/role", verifyToken, verifyAdmin, async (req, res) => {
+      const { role } = req.body;
+      if (!["customer", "owner", "admin"].includes(role)) {
+        return res.status(400).send({ message: "invalid role" });
+      }
+      const result = await usersCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { role } },
+      );
+      res.send(result);
+    });
+
+    // any logged-in user: update own profile
+    app.patch("/users/profile", verifyToken, async (req, res) => {
+      const { name, image, phone, address } = req.body;
+      const result = await usersCollection.updateOne(
+        { email: req.decoded.email },
+        { $set: { name, image, phone, address } },
+      );
+      res.send(result);
+    });
+
+    // equipment, bookings, payments and analytics routes will be added here
+
+    app.listen(port, () => {
+      console.log(`Server running on port ${port}`);
+    });
   } catch (error) {
-    console.error("MongoDB connection failed:", error);
+    console.error("Server failed to start:", error);
   }
 }
+
 run();
-
-app.get("/", (req, res) => {
-  res.send("Rentivo server is running");
-});
-
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
