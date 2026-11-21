@@ -38,11 +38,18 @@ async function run() {
     const usersCollection = db.collection("user");
     const equipmentCollection = db.collection("equipment");
     const favoritesCollection = db.collection("favorites");
+    const bookingsCollection = db.collection("bookings");
+    const paymentsCollection = db.collection("payments");
+
+    // one payment record per Stripe session (prevents duplicate bookings)
+    await paymentsCollection.createIndex({ sessionId: 1 }, { unique: true });
 
     const { verifyToken, verifyRenter, verifyOwner, verifyAdmin } =
       require("./middleware/auth")(usersCollection);
 
     // ---------- users ----------
+
+    // get the logged-in user's role
     app.get("/users/role/:email", verifyToken, async (req, res) => {
       if (req.params.email !== req.decoded.email) {
         return res.status(403).send({ message: "forbidden access" });
@@ -51,6 +58,25 @@ async function run() {
       res.send({ role: user?.role || "customer" });
     });
 
+    // logged in: own profile data
+    app.get("/users/me", verifyToken, async (req, res) => {
+      const user = await usersCollection.findOne(
+        { email: req.decoded.email },
+        {
+          projection: {
+            name: 1,
+            email: 1,
+            image: 1,
+            phone: 1,
+            address: 1,
+            role: 1,
+          },
+        },
+      );
+      res.send(user);
+    });
+
+    // admin: all users
     app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
       const users = await usersCollection
         .find()
@@ -59,6 +85,7 @@ async function run() {
       res.send(users);
     });
 
+    // any logged-in user: update own profile
     app.patch("/users/profile", verifyToken, async (req, res) => {
       const { name, image, phone, address } = req.body;
       const result = await usersCollection.updateOne(
@@ -68,6 +95,7 @@ async function run() {
       res.send(result);
     });
 
+    // admin: change a user's role
     app.patch("/users/:id/role", verifyToken, verifyAdmin, async (req, res) => {
       const { role } = req.body;
       if (!["customer", "owner", "admin"].includes(role)) {
@@ -97,7 +125,26 @@ async function run() {
       { verifyToken, verifyRenter },
     );
 
-    // bookings, payments and analytics routes will be added here
+    // ---------- bookings and payments ----------
+    require("./routes/bookings")(
+      app,
+      {
+        usersCollection,
+        equipmentCollection,
+        bookingsCollection,
+        paymentsCollection,
+      },
+      { verifyToken, verifyRenter },
+    );
+
+    // ---------- rental lists ----------
+    require("./routes/rentals")(
+      app,
+      { bookingsCollection },
+      { verifyToken, verifyRenter, verifyOwner, verifyAdmin },
+    );
+
+    // analytics routes will be added here
 
     app.listen(port, () => {
       console.log(`Server running on port ${port}`);
