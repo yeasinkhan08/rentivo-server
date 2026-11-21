@@ -40,6 +40,7 @@ async function run() {
     const favoritesCollection = db.collection("favorites");
     const bookingsCollection = db.collection("bookings");
     const paymentsCollection = db.collection("payments");
+    const messagesCollection = db.collection("messages");
 
     // one payment record per Stripe session (prevents duplicate bookings)
     await paymentsCollection.createIndex({ sessionId: 1 }, { unique: true });
@@ -48,8 +49,6 @@ async function run() {
       require("./middleware/auth")(usersCollection);
 
     // ---------- users ----------
-
-    // get the logged-in user's role
     app.get("/users/role/:email", verifyToken, async (req, res) => {
       if (req.params.email !== req.decoded.email) {
         return res.status(403).send({ message: "forbidden access" });
@@ -58,7 +57,6 @@ async function run() {
       res.send({ role: user?.role || "customer" });
     });
 
-    // logged in: own profile data
     app.get("/users/me", verifyToken, async (req, res) => {
       const user = await usersCollection.findOne(
         { email: req.decoded.email },
@@ -76,7 +74,6 @@ async function run() {
       res.send(user);
     });
 
-    // admin: all users
     app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
       const users = await usersCollection
         .find()
@@ -85,7 +82,6 @@ async function run() {
       res.send(users);
     });
 
-    // any logged-in user: update own profile
     app.patch("/users/profile", verifyToken, async (req, res) => {
       const { name, image, phone, address } = req.body;
       const result = await usersCollection.updateOne(
@@ -95,7 +91,6 @@ async function run() {
       res.send(result);
     });
 
-    // admin: change a user's role
     app.patch("/users/:id/role", verifyToken, verifyAdmin, async (req, res) => {
       const { role } = req.body;
       if (!["customer", "owner", "admin"].includes(role)) {
@@ -155,6 +150,9 @@ async function run() {
       },
       { verifyToken, verifyOwner, verifyAdmin },
     );
+
+    // ---------- contact ----------
+    require("./routes/contact")(app, { messagesCollection });
 
     app.listen(port, () => {
       console.log(`Server running on port ${port}`);
