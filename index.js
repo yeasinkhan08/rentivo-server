@@ -144,7 +144,17 @@ async function run() {
       { verifyToken, verifyRenter, verifyOwner, verifyAdmin },
     );
 
-    // analytics routes will be added here
+    // ---------- analytics ----------
+    require("./routes/analytics")(
+      app,
+      {
+        usersCollection,
+        equipmentCollection,
+        bookingsCollection,
+        paymentsCollection,
+      },
+      { verifyToken, verifyOwner, verifyAdmin },
+    );
 
     app.listen(port, () => {
       console.log(`Server running on port ${port}`);
